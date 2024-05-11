@@ -1,0 +1,11 @@
+dotnet add package Microsoft.EntityFrameworkCore.Tools 
+dotnet add package MySql.EntityFrameworkCore 
+dotnet add package MySqlConnector 
+dotnet add package Newtonsoft.Json 
+dotnet add package Pomelo.EntityFrameworkCore.MySql 
+dotnet add package Swashbuckle.AspNetCore  add kr he packages
+
+
+dotnet ef migrations add name
+dotnet tool install --global dotnet-ef
+dotnet ef database update

@@ -1,0 +1,357 @@
+DSBDAL
+
+Open eclipse -> File -> New -> Java Project -> Project Name-WordCount -> Next -> Libraries -> Add external JARs -> File System -> usr -> lib -> hadoop -> Select all jar files starting from hadoop-annotations.jar -> ok ->Again Add external JARs -> client -> Select all jar files -> ok -> Finish
+
+Project WordCount is created.
+src -> new -> class -> Name-WordCount -> Finish
+
+Search Hadoop.apache.org hadoop-mapreduce wordcount program copy source code and paste in class WordCount
+
+Now to export JAR file :
+right click on Project -> export -> Java -> JAR file -> next -> browse -> cloudera -> name-WordCount.jar -> OK ->(path should be /home/cloudera/WordCount.jar) Finish
+
+Check Jar file is exported or not:
+computer -> filesystem -> home -> cloudera -> WordCount.jar
+
+open terminal :
+ 1) ls -> check WordCount.jar
+ 2) pwd -> check working directory (/home/cloudera)
+ 3) cat > /home/cloudera/Processfile1.txt ->create Processfile1.txt in cloudera, type words : bus,car,train,etc. one on each line. -> ctrl+z
+ 4) cat /home/cloudera/Processfile1.txt -> to check if file is created (will display contents of file)
+ 5) hdfs dfs -ls / -> to check all folders in hdfs
+ 6) hdfs dfs -mkdir /inputfolder1 -> create folder inputfolder1 in hdfs
+ 7) hdfs dfs -put /home/cloudera/Processfile1.txt /inputfolder1/ -> put Processfile1 in inputfolder1
+ 8) hdfs dfs -cat /inputfolder1/Processfile1.txt -> to check if file is placed correctly and check content
+ 9) hadoop jar /home/cloudera/Wordcount.jar WordCount /inputfolder1/Processfile1.txt /out1 -> (to run file in hadoop)
+ 10) hdfs dfs -ls /out1 -> to check where output is stored
+ 11) hdfs dfs -cat /out1/part-r-00000
+ 12) In order to modify contents of file Processfile1.txt use -> nano /home/cloudera/Processfile1.txt (then do ctrl+O)
+     to replace old file by new file in hdfs use : hdfs dfs -put -f /home/cloudera/Processfile1.txt /inputfolder1/Processfile1.txt
+------------------------------------------------------------------------------------------------------------------------------------------------------------Music Code :
+
+import java.io.IOException;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class MusicAnalytics {
+
+    public static class MusicMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+
+        private final static IntWritable one = new IntWritable(1);
+        private Text trackID = new Text();
+
+        @Override
+        public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+            String[] fields = value.toString().split("\t");
+            if (fields.length >= 2) { // Assuming at least 2 fields: user ID, track ID
+                trackID.set(fields[1]);
+                // Emit key-value pairs for track ID
+                context.write(trackID, one);
+            }
+        }
+    }
+
+    public static class MusicReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+
+        @Override
+        public void reduce(Text key, Iterable<IntWritable> values, Context context)
+                throws IOException, InterruptedException {
+            int uniqueListeners = 0;
+            int totalShares = 0;
+            for (IntWritable value : values) {
+                uniqueListeners++;
+                totalShares += value.get();
+            }
+            context.write(key, new IntWritable(uniqueListeners)); // Output unique listeners
+            context.write(key, new IntWritable(totalShares)); // Output total shares
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        Configuration conf = new Configuration();
+        Job job = Job.getInstance(conf, "Music Analytics");
+        job.setJarByClass(MusicAnalytics.class);
+        job.setMapperClass(MusicMapper.class);
+        job.setReducerClass(MusicReducer.class);
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+[cloudera@quickstart ~]$ pwd
+[cloudera@quickstart ~]$ mkdir datasets
+[cloudera@quickstart ~]$ sudo mount -t vboxsf DSBDALExam_DataSets /home/cloudera/datasets/
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+LogFile :
+
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.text.ParseException;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.util.GenericOptionsParser;
+import org.apache.hadoop.io.*;
+import org.apache.hadoop.mapreduce.*;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+
+public class LogFile {
+	public static void main(String[] args) throws Exception{
+		Configuration c = new Configuration();
+		String[] files = new GenericOptionsParser(c,args).getRemainingArgs();
+		Path input = new Path(files[0]);
+		Path output = new Path(files[1]);
+		
+		Job j = Job.getInstance(c,"logfile");
+		j.setJarByClass(LogFile.class);
+		j.setMapperClass(LogMapper.class);
+		j.setReducerClass(LogReducer.class);
+		j.setOutputKeyClass(Text.class);
+		j.setOutputValueClass(IntWritable.class);
+		FileInputFormat.addInputPath(j,input);
+		FileOutputFormat.setOutputPath(j,output);
+		System.exit(j.waitForCompletion(true)?0:1);
+	}
+	
+	public static class LogMapper extends Mapper<LongWritable,Text,Text,IntWritable>{
+		public void map(LongWritable key, Text value, Context con)throws IOException,InterruptedException{
+			String ip = value.toString();
+			String[] lines = ip.split("\n");
+			SimpleDateFormat format = new SimpleDateFormat("dd-MM-yyyy HH:mm");
+			for(String line : lines){
+				String[] words = line.split(",");
+				try{
+					Date logintime = format.parse(words[5]);
+					Date logouttime = format.parse(words[7]);
+					
+					long loginms = logintime.getTime();
+					long logoutms = logouttime.getTime();
+					
+					long diffms = logoutms - loginms;
+					int diffmin = (int) (diffms/60000);
+					
+					con.write(new Text(words[1]), new IntWritable(diffmin));
+					
+				}catch(ParseException e){
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+	
+	public static class LogReducer extends Reducer<Text,IntWritable, Text, IntWritable>{
+		public void reduce(Text word,Iterable<IntWritable> values, Context con) throws IOException, InterruptedException{
+			int max=0;
+			for(IntWritable value:values){
+				if(max<value.get()){
+					max = value.get();
+				}
+			}
+			con.write(word, new IntWritable(max));
+		}
+	}
+}
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------Movie :
+
+import java.io.IOException;
+import java.text.DecimalFormat;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.util.GenericOptionsParser;
+import org.apache.hadoop.io.*;
+import org.apache.hadoop.mapreduce.*;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class MovieRatings {
+
+	public static void main(String[] args) throws Exception {
+		Configuration c = new Configuration();
+		String[] files = new GenericOptionsParser(c, args).getRemainingArgs();
+		Path input = new Path(files[0]);
+		Path output = new Path(files[1]);
+		Job j = Job.getInstance(c,"movierating");
+		j.setJarByClass(MovieRatings.class);
+		j.setMapperClass(MovieMapper.class);
+		j.setReducerClass(MovieReducer.class);
+		j.setOutputKeyClass(Text.class);
+		j.setOutputValueClass(FloatWritable.class);
+		FileInputFormat.addInputPath(j, input);
+		FileOutputFormat.setOutputPath(j, output);
+		System.exit(j.waitForCompletion(true)?0:1);
+	}
+	
+	public static class MovieMapper extends Mapper<LongWritable,Text,Text,FloatWritable>{
+		public void map(LongWritable key,Text value,Context con) throws IOException,InterruptedException{
+			String ip = value.toString();
+			String[] lines=ip.split("\n");
+			
+			for(String line : lines){
+				String[] words = line.split(",");
+				con.write(new Text(words[1].trim()), new FloatWritable(Float.parseFloat(words[2].trim())));
+			}
+		}
+	}
+	
+	public static class MovieReducer extends Reducer<Text,FloatWritable,Text,FloatWritable>{
+		Text recmovie = new Text();
+		float max=0;
+		DecimalFormat df = new DecimalFormat("#.#");
+		
+		public void reduce(Text word,Iterable<FloatWritable> values,Context con) throws IOException,InterruptedException{
+			float sum=0;
+			float count = 0;
+			float avg = 0;
+			for(FloatWritable value : values){
+				count++;
+				sum+=value.get();
+			}
+			avg = sum/count;
+			if(avg>max){
+				max=avg;
+				recmovie.set(word);
+			}
+			con.write(word, new FloatWritable(Float.parseFloat(df.format(avg))));
+		}
+		
+		protected void cleanup(Context con) throws IOException,InterruptedException{
+			con.write(new Text("Recommended Movie : "+recmovie.toString()+" , with rating : "), new FloatWritable(Float.parseFloat(df.format(max))));
+		}
+	}
+
+}
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Flight Info :
+
+hbase shell :
+1) create 'flight','finfo','fsh'
+2) list
+3) put 'flight',1,'finfo:source','Mumbai'
+   put 'flight',1,'finfo:dest','Jannat'
+   put 'flight',1,'finfo:year','2025'
+   put 'flight',1,'fsch:at','10:10 am'
+   put 'flight',1,'fsh:dt','12:10 am'
+   put 'flight',1,'fsh:delay',22
+4) scan 'flight'
+5) delete 'flight',1,'fsh:delay',1715278028221
+6) put 'flight',1,'fsh:delay',25
+7) alter 'flight',NAME=>'revenue'
+8) put 'flight',1,'revenue:rs',45000
+9) put 'flight',2,'revenue:rs',65000
+10)create 'test_table','testinfo1','testinfo2'
+11)disable 'test_table'
+12)drop 'test_table'
+13)delete 'flight',1,'revenue:rs',1715278744338
+
+hive :
+1) CREATE EXTERNAL TABLE flight_hive(fid int,fsource string,fdest string,fyear int,f_at string, f_dt string,fdelay int)
+   STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler' 
+   WITH SERDEPROPERTIES("hbase.columns.mapping"=":key,finfo:source,finfo:dest,finfo:year,fsh:at,fsh:dt,fsh:delay") 
+   TBLPROPERTIES("hbase.table.name"="flight");
+2) select * from flight_hive;
+3) SELECT SUM(fdelay) AS total_delay FROM flight_hive;
+4) SELECT AVG(fdelay) AS average__delay FROM flight_hive;
+5) CREATE INDEX flight_info_new ON TABLE flight_hive(fdelay) AS 'COMPACT' WITH DEFERRED REBUILD;
+6) SHOW INDEXES on flight_hive;
+7) ALTER INDEX flight_info_new ON flight_hive REBUILD;
+8) INSERT INTO TABLE flight_hive VALUES
+    > (5, 'London', 'Paris', 2024, '09:30 am', '11:30 am', 20),
+    > (6, 'Tokyo', 'Sydney', 2027, '08:45 am', '10:45 am', 18),
+    > (7, 'Dubai', 'Singapore', 2026, '07:50 am', '09:50 am', 22);
+9) show tables;
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+Visalisation :
+
+1) Histogram :
+- plt.hist(df['age'], bins=20, color='skyblue', edgecolor='black')
+- sns.histplot(x='education', bins=20, kde=True,data=df)
+
+2) Dotplot :
+- sns.stripplot(x='Target', y='age', data=df.head(100),hue='Target')
+
+3) Barplot :
+- df['education'].value_counts().plot(kind='bar', color='pink')
+- sns.barplot(x="Target", y="age",data=df)
+
+4) Lineplot :
+- plt.plot(df['age'].head(100), df['Target'].head(100), marker='o')
+- sns.lineplot(x="age", y="education", data=df)
+
+5) Pie Chart :
+- df['education'].value_counts().plot(kind='pie', autopct='%1.1f%%')
+
+6) Box plot :
+- sns.boxplot(x='age', y='education-num', data=df, color='red', linewidth=2)
+- plt.boxplot(df['age'],patch_artist=True)
+
+7) Scatter Plot :
+- sns.scatterplot(x="hours-per-week", y="age", data=df,hue='hours-per-week')
+- plt.scatter(df['hours-per-week'], df['age'])
+
+8) Combine Plot
+- plt.figure(figsize=(8, 15))
+
+# Box Plot of Age by Income
+plt.subplot(3, 1, 1)
+sns.boxplot(x='Target', y='age', data=df)
+plt.title('Box Plot of Age by Income')
+
+# Histogram of Hours per Week
+plt.subplot(3, 1, 2)
+sns.histplot(x='hours-per-week', data=df, kde=True)
+plt.title('Histogram of Hours per Week')
+
+# Scatter Plot of Education Num by Hours per Week
+plt.subplot(3, 1, 3)
+sns.scatterplot(x='hours-per-week', y='education-num', data=df, hue='Target')
+plt.title('Scatter Plot of Education Num by Hours per Week')
+
+plt.tight_layout()
+plt.show()
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+HIVE :
+1) CREATE : CREATE TABLE customer_info ( cust_id INT,cust_name STRING,order_id INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' STORED AS TEXTFILE;
+            CREATE TABLE order_info(order_id INT,item_id INT,quantity INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' STORED AS TEXTFILE;
+            CREATE TABLE item_info(item_id INT,item_name STRING,item_price DOUBLE) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' STORED AS TEXTFILE;
+2) show tables;
+3) LOAD : LOAD DATA LOCAL INPATH '/home/cloudera/customer_info.csv' INTO TABLE customer_info;
+4) TRUNCATE TABLE order_info;
+5) JOIN : SELECT * FROM customer_info JOIN order_info ON customer_info.order_id=order_info.order_id JOIN item_info ON item_info.item_id = 
+   order_info.item_id;
+6) INDEX : CREATE INDEX idx_customer_info ON TABLE customer_info (cust_id) AS 'COMPACT' WITH DEFERRED REBUILD;
+           ALTER INDEX idx_customer_info ON customer_info REBUILD;
+7) SELECT customer_info.cust_id, customer_info.order_id, customer_info.cust_name, SUM(order_info.quantity * item_info.item_price) AS total FROM order_info 
+   JOIN item_info ON order_info.item_id=item_info.item_id JOIN customer_info ON order_info.order_id=customer_info.order_id GROUP BY customer_info.cust_id, 
+   customer_info.order_id, customer_info.cust_name ORDER BY total DESC LIMIT 1;
+8) SELECT SUM(item_info.item_price*order_info.quantity) AS Total_Sales,AVG(item_info.item_price*order_info.quantity) AS Average_Sales FROM item_info JOIN 
+   order_info ON item_info.item_id=order_info.item_id;
+9) CREATE EXTERNAL TABLE new_cust_info(custid int,name string,orderid int) STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler' WITH 
+   SERDEPROPERTIES("hbase.columns.mapping"=":key,customer:name,customer:orderid") TBLPROPERTIES ("hbase.table.name"="CustomerInfo");
+
+HBASE :
+
+1) create 'CustomerInfo','customer'
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
